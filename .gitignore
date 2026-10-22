@@ -1,0 +1,20 @@
+
+# Python
+Backend/.venv/
+Backend/__pycache__/
+Backend/**/*.pyc
+Backend/.env
+Backend/.env.*
+
+# React
+PayEase/node_modules/
+PayEase/dist/
+PayEase/.env
+PayEase/.env.*
+
+# Allow example environment templates
+!Backend/.env.example
+!PayEase/.env.example
+
+# General
+.DS_Store
