@@ -123,7 +123,7 @@ export default function Home() {
         </section>
 
         <footer id="about" className="px-5 py-8 text-center text-sm text-[#425166]">
-          Made for the memories, not the money math. ✳
+          Made for the memories, not the money math
         </footer>
       </main>
     </div>
