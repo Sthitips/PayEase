@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     DB_PORT: int
     DB_NAME: str
 
+    PAYPAL_CLIENT_ID: str
+    PAYPAL_CLIENT_SECRET: str
+    PAYPAL_BASE_URL: str = "https://sandbox.paypal.com"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8"

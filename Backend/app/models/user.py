@@ -53,3 +53,20 @@ class User(Base):
         foreign_keys="Settlement.to_user_id",
         back_populates="receiver"
     )
+
+    payment_transactions = relationship(
+        "PaymentTransaction",
+        back_populates="payer"
+    )
+
+    settlement_payments_made = relationship(
+        "SettlementPayment",
+        foreign_keys="SettlementPayment.payer_user_id",
+        back_populates="payer"
+    )
+
+    settlement_payments_confirmed = relationship(
+        "SettlementPayment",
+        foreign_keys="SettlementPayment.confirmed_by_user_id",
+        back_populates="confirmer"
+    )

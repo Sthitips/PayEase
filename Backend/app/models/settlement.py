@@ -80,6 +80,11 @@ class Settlement(Base):
         back_populates="received_settlements"
     )
 
+    payment_attempts = relationship(
+        "SettlementPayment",
+        back_populates="settlement"
+    )
+
     __table_args__ = (
         CheckConstraint(
             "amount > 0",

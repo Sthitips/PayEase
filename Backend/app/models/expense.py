@@ -85,6 +85,11 @@ class Expense(Base):
         cascade="all, delete-orphan"
     )
 
+    payment_transactions = relationship(
+        "PaymentTransaction",
+        back_populates="expense"
+    )
+
     __table_args__ = (
         CheckConstraint("amount > 0", name="check_expense_amount"),
     )
