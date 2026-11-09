@@ -18,7 +18,7 @@ class Group(Base):
         nullable=False
     )
 
-    currency = Column(String(3), default="INR", nullable=False)
+    currency = Column(String(3), default="USD", nullable=False)
 
     created_at = Column(
         DateTime(timezone=True),

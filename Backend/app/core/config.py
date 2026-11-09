@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_SECRET: str
     PAYPAL_BASE_URL: str = "https://sandbox.paypal.com"
 
+    # Authentication settings
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8"

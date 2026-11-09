@@ -6,8 +6,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from fastapi import HTTPException
 from app.services.paypal_service import get_paypal_access_token, create_paypal_order, capture_paypal_order
+from app.routes.auth import router as auth_router
+from app.routes.groups import router as groups_router
+from app.routes import expenses
 
 app = FastAPI()
+app.include_router(auth_router)
+app.include_router(groups_router)
+app.include_router(expenses.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -149,3 +155,4 @@ def paypal_cancel():
         "success": False,
         "message": "Buyer cancelled PayPal checkout."
     }
+
