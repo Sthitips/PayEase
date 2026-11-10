@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database.connection import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, UserLogin
+from app.schemas.user import UserCreate, UserResponse, UserLogin, UserProfileUpdate
 from app.core.security import hash_password
 from app.schemas.user import TokenResponse
 from app.core.security import verify_password, create_access_token
@@ -97,5 +97,25 @@ def login_user(
 def get_my_profile(
     current_user: User = Depends(get_current_user)
 ):
+    return current_user
+
+@router.patch("/me")
+def update_profile(
+    profile_data: UserProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    update_data = profile_data.model_dump(exclude_unset=True)
+
+    if "paypal_email" in update_data:
+        current_user.paypal_email = (
+            str(update_data["paypal_email"])
+            if update_data["paypal_email"] is not None
+            else None
+        )
+
+    db.commit()
+    db.refresh(current_user)
+
     return current_user
 

@@ -88,7 +88,7 @@ def create_expense(
             input_source=expense_data.input_source,
             transcription_text=expense_data.transcription_text,
             source_reference=expense_data.source_reference,
-            split_type="ai"
+            split_type=expense_data.split_type
         )
 
         db.add(expense)

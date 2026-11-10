@@ -10,12 +10,27 @@ class ExpenseSplitInput(BaseModel):
     share_amount: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
 
 
+
 class ExpenseCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     description: str = Field(min_length=1, max_length=255)
 
     merchant: str | None = None
-    input_source: Literal["manual", "qr", "voice"] = "manual"
+
+    input_source: Literal[
+        "manual", "qr", "voice", "ai"
+    ] = "manual"
+
+    split_type: Literal[
+        "manual",
+        "equal",
+        "additional_amount",
+        "ratio",
+        "percentage",
+        "custom",
+        "itemized"
+    ] = "manual"
+
     transcription_text: str | None = None
     source_reference: str | None = None
 

@@ -11,6 +11,9 @@ from app.schemas.group import GroupCreate, GroupResponse
 from app.core.dependencies import get_current_user
 from app.schemas.group import GroupMemberResponse
 from app.schemas.group import GroupMemberAdd, GroupUpdate
+from app.services.balance_service import calculate_group_balances
+from app.services.debt_simplification_service import simplify_debts
+from app.services.settlement_service import create_settlement_plan
 
 
 router = APIRouter(
@@ -428,3 +431,100 @@ def leave_group(
     return {
         "message": "You have successfully left the group"
     }
+
+
+@router.get("/{group_id}/balances")
+def get_group_balances(
+    group_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Verify that the requesting user belongs to the group
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.user_id == current_user.id
+    ).first()
+
+    if not membership:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a member of this group"
+        )
+
+    try:
+        return calculate_group_balances(db, group_id)
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error)
+        )
+
+
+@router.get("/{group_id}/settlements/suggestions")
+def get_settlement_suggestions(
+    group_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Verify group membership
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.user_id == current_user.id
+    ).first()
+
+    if not membership:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a member of this group"
+        )
+
+    try:
+        # 2. Calculate current net balances
+        balances = calculate_group_balances(
+            db=db,
+            group_id=group_id
+        )
+
+        # 3. Generate minimum-transaction suggestions
+        suggestions = simplify_debts(balances)
+
+        # 4. Return suggestions without saving settlements
+        return {
+            "group_id": group_id,
+            "total_transactions": len(suggestions),
+            "settlements": suggestions
+        }
+
+    except ValueError as error:
+        message = str(error)
+
+        if message == "Group not found":
+            raise HTTPException(status_code=404, detail=message)
+
+        raise HTTPException(status_code=400, detail=message)
+
+
+@router.post("/{group_id}/settlements/confirm", status_code=201)
+def confirm_settlement_plan(
+    group_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        return create_settlement_plan(
+            db=db,
+            group_id=group_id,
+            current_user_id=current_user.id
+        )
+
+    except ValueError as error:
+        message = str(error)
+
+        if message == "Group not found":
+            raise HTTPException(status_code=404, detail=message)
+
+        if message == "You are not a member of this group":
+            raise HTTPException(status_code=403, detail=message)
+
+        raise HTTPException(status_code=409, detail=message)

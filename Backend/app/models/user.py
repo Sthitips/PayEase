@@ -15,6 +15,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
 
     profile_picture = Column(String(500), nullable=True)
+    paypal_email = Column(String(255), nullable=True, index=True)
 
     created_at = Column(
         DateTime(timezone=True),

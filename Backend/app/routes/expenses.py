@@ -12,7 +12,14 @@ from app.models.group import Group
 from app.models.group_member import GroupMember
 from app.models.expense import Expense
 from app.services.expense_service import create_expense, update_expense, delete_expense
-
+from app.schemas.ai_expense import AIExpenseRequest
+from app.services.ai_service import parse_expense_with_ai
+from app.services.expense_validation_service import (
+    validate_ai_expense_draft
+)
+from app.services.expense_allocation_service import (
+    calculate_expense_shares
+)
 router = APIRouter(
     prefix="/api/groups/{group_id}/expenses",
     tags=["Expenses"]
@@ -206,3 +213,173 @@ def remove_expense(
             raise HTTPException(status_code=403, detail=message)
 
         raise HTTPException(status_code=400, detail=message)
+
+
+@router.post("/ai-draft")
+def create_ai_expense_draft(
+    group_id: int,
+    request: AIExpenseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Verify that the group exists.
+    group = db.query(Group).filter(
+        Group.id == group_id
+    ).first()
+
+    if not group:
+        raise HTTPException(
+            status_code=404,
+            detail="Group not found"
+        )
+
+    # 2. Verify that the current user belongs to the group.
+    current_membership = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.user_id == current_user.id
+    ).first()
+
+    if not current_membership:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a member of this group"
+        )
+
+    # 3. Fetch the actual group members.
+    members = (
+        db.query(User)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .filter(GroupMember.group_id == group_id)
+        .all()
+    )
+
+    group_members = [
+        {"id": member.id, "name": member.name}
+        for member in members
+    ]
+
+    
+    try:
+        # 4. Ask Gemini to interpret the expense.
+        gemini_draft = parse_expense_with_ai(
+            user_input=request.description,
+            group_members=group_members,
+            current_user_name=current_user.name
+        )
+
+        # 5. Handle clarification before attempting allocation.
+        if gemini_draft.clarification_needed:
+            return {
+                "clarification_needed": True,
+                "clarification_question": (
+                    gemini_draft.clarification_question
+                )
+            }
+
+        # 6. Calculate exact participant shares using Python.
+        calculated_draft = calculate_expense_shares(
+            gemini_draft
+        )
+
+        # 7. Validate the calculated draft and map names to IDs.
+        validated_draft = validate_ai_expense_draft(
+            db=db,
+            group_id=group_id,
+            ai_draft=calculated_draft
+        )
+
+        if validated_draft["clarification_needed"]:
+            return validated_draft
+
+        # 8. Return the preview without saving the expense.
+        return {
+            **validated_draft,
+            "payer_user_id": current_user.id,
+            "currency": group.currency,
+            "split_type": gemini_draft.split_type,
+            "items": [
+                item.model_dump()
+                for item in (gemini_draft.items or [])
+            ],
+            "adjustment": (
+                gemini_draft.adjustment.model_dump()
+                if gemini_draft.adjustment
+                else None
+            ),
+            "requires_confirmation": True
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to generate expense draft"
+        )
+
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to generate expense draft"
+        )
+
+
+@router.post(
+    "/ai-confirm",
+    response_model=ExpenseResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def confirm_ai_expense(
+    group_id: int,
+    expense_data: ExpenseCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Ensure this endpoint always records an AI-assisted expense.
+        expense_data = expense_data.model_copy(
+            update={"input_source": "ai"}
+        )
+
+        # Reuse the existing expense creation service.
+        expense = create_expense(
+            db=db,
+            group_id=group_id,
+            paid_by_user_id=current_user.id,
+            expense_data=expense_data
+        )
+
+        return expense
+
+    except ValueError as error:
+        message = str(error)
+
+        if message == "Group not found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message
+            )
+
+        if message == "You are not a member of this group":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=message
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+
+
