@@ -2,7 +2,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-
+import secrets
+import string
 from app.database.connection import get_db
 from app.models.group import Group
 from app.models.group_member import GroupMember
@@ -14,6 +15,7 @@ from app.schemas.group import GroupMemberAdd, GroupUpdate
 from app.services.balance_service import calculate_group_balances
 from app.services.debt_simplification_service import simplify_debts
 from app.services.settlement_service import create_settlement_plan
+from app.schemas.group import JoinGroupRequest
 
 
 router = APIRouter(
@@ -21,6 +23,18 @@ router = APIRouter(
     tags=["Groups"]
 )
 
+def generate_invite_code(db: Session) -> str:
+    characters = string.ascii_uppercase + string.digits
+
+    while True:
+        code = "".join(secrets.choice(characters) for _ in range(8))
+
+        existing_group = db.query(Group).filter(
+            Group.invite_code == code
+        ).first()
+
+        if not existing_group:
+            return code
 
 @router.post(
     "/",
@@ -33,11 +47,12 @@ def create_group(
     current_user: User = Depends(get_current_user)
 ):
     new_group = Group(
-        name=group_data.name,
-        description=group_data.description,
-        currency=group_data.currency.upper(),
-        created_by=current_user.id
-    )
+    name=group_data.name,
+    description=group_data.description,
+    currency=group_data.currency.upper(),
+    created_by=current_user.id,
+    invite_code=generate_invite_code(db)
+)
 
     try:
         # Add the group first
@@ -90,6 +105,62 @@ def get_my_groups(
 
     return groups
 
+@router.post(
+    "/join",
+    response_model=GroupResponse,
+    status_code=status.HTTP_200_OK
+)
+def join_group(
+    join_data: JoinGroupRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Normalize the invite code
+    invite_code = join_data.invite_code.strip().upper()
+
+    # 2. Find the group using its invite code
+    group = db.query(Group).filter(
+        Group.invite_code == invite_code
+    ).first()
+
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid invite code. No group found."
+        )
+
+    # 3. Check whether the user is already a member
+    existing_membership = db.query(GroupMember).filter(
+        GroupMember.group_id == group.id,
+        GroupMember.user_id == current_user.id
+    ).first()
+
+    if existing_membership:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You are already a member of this group."
+        )
+
+    # 4. Add the current user to the group
+    membership = GroupMember(
+        group_id=group.id,
+        user_id=current_user.id,
+        role="member"
+    )
+
+    try:
+        db.add(membership)
+        db.commit()
+        db.refresh(group)
+
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You are already a member of this group."
+        )
+
+    return group
 
 @router.get(
     "/{group_id}",

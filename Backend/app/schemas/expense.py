@@ -53,6 +53,7 @@ class ExpenseResponse(BaseModel):
     description: str
     merchant: str | None
     input_source: str
+    transcription_text: str | None= None
     split_type: str
     expense_date: datetime
     created_at: datetime

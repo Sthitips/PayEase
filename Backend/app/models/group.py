@@ -20,6 +20,13 @@ class Group(Base):
 
     currency = Column(String(3), default="USD", nullable=False)
 
+    invite_code = Column(
+    String(8),
+    unique=True,
+    nullable=False,
+    index=True
+)
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -42,5 +49,10 @@ class Group(Base):
 
     settlements = relationship(
         "Settlement",
+        back_populates="group"
+    )
+
+    payment_transactions = relationship(
+        "PaymentTransaction",
         back_populates="group"
     )

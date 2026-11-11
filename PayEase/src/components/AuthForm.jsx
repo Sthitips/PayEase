@@ -1,21 +1,25 @@
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
 
-export default function AuthForm({ mode, onSubmit }) {
+export default function AuthForm({
+  mode,
+  onSubmit,
+  error,
+  loading,
+}) {
   const isSignup = mode === "signup";
-  const [error, setError] = useState("");
+  const [validationError, setValidationError] = useState("");
 
   function handleSubmit(event) {
     event.preventDefault();
-    setError("");
+    setValidationError("");
 
     const formData = new FormData(event.currentTarget);
     const password = formData.get("password");
     const confirmPassword = formData.get("confirmPassword");
 
     if (isSignup && password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setValidationError("Passwords do not match.");
       return;
     }
 
@@ -38,6 +42,7 @@ export default function AuthForm({ mode, onSubmit }) {
             type="text"
             placeholder="Enter your full name"
             autoComplete="name"
+            minLength={2}
             required
             className={inputClass}
           />
@@ -77,10 +82,7 @@ export default function AuthForm({ mode, onSubmit }) {
 
       {isSignup && (
         <div className="space-y-2">
-          <label
-            htmlFor="confirmPassword"
-            className="text-sm font-medium"
-          >
+          <label htmlFor="confirmPassword" className="text-sm font-medium">
             Confirm password
           </label>
           <input
@@ -107,14 +109,15 @@ export default function AuthForm({ mode, onSubmit }) {
         </div>
       )}
 
-      {error && (
+      {(validationError || error) && (
         <p role="alert" className="text-sm font-medium text-red-600">
-          {error}
+          {validationError || error}
         </p>
       )}
-        <Link to="/dashboard" className="mb-4 block">
+
       <button
         type="submit"
+        disabled={loading}
         className="
           w-full rounded-xl border-2 border-[#182D43]
           bg-[#FF684F] px-4 py-3.5 font-bold text-[#182D43]
@@ -124,11 +127,15 @@ export default function AuthForm({ mode, onSubmit }) {
           hover:shadow-[1px_1px_0px_#182D43]
           active:translate-x-[3px] active:translate-y-[3px]
           active:shadow-none
+          disabled:cursor-not-allowed disabled:opacity-60
         "
       >
-        {isSignup ? "Create account" : "Login to PayEase"} →
+        {loading
+          ? "Please wait..."
+          : isSignup
+            ? "Create account →"
+            : "Login to PayEase →"}
       </button>
-      </Link>
 
       <p className="text-center text-xs leading-5 text-muted-foreground">
         By continuing, you agree to our{" "}

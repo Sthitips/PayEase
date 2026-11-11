@@ -1,9 +1,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, ConfigDict
-from datetime import datetime
-from pydantic import EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 
 class GroupCreate(BaseModel):
@@ -18,9 +16,15 @@ class GroupResponse(BaseModel):
     description: str | None = None
     created_by: int
     currency: str
+    invite_code: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class JoinGroupRequest(BaseModel):
+    invite_code: str = Field(min_length=6, max_length=12)
+
 
 class GroupMemberResponse(BaseModel):
     id: int
@@ -29,6 +33,7 @@ class GroupMemberResponse(BaseModel):
     profile_picture: str | None = None
     role: str
     joined_at: datetime
+
 
 class GroupMemberAdd(BaseModel):
     email: EmailStr
@@ -48,4 +53,3 @@ class GroupUpdate(BaseModel):
         min_length=3,
         max_length=3
     )
-

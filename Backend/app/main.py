@@ -10,6 +10,7 @@ from app.routes.auth import router as auth_router
 from app.routes.groups import router as groups_router
 from app.routes import expenses
 from app.routes import settlement_payments
+from app.schemas.paypal import PayPalOrderRequest 
 
 app = FastAPI()
 app.include_router(auth_router)
@@ -83,9 +84,12 @@ async def paypal_token_test():
         )
 
 @app.post("/api/paypal/create-order")
-async def create_order():
+async def create_order(request: PayPalOrderRequest):
     try:
-        order = await create_paypal_order()
+        order = await create_paypal_order(
+            amount=f"{request.amount:.2f}",
+            group_id=request.group_id
+        )
 
         if not order["approval_url"]:
             raise HTTPException(
@@ -98,10 +102,18 @@ async def create_order():
             **order
         }
 
-    except httpx.HTTPStatusError:
+    except httpx.HTTPStatusError as e:
+        print("PayPal HTTP Status:", e.response.status_code)
+        print("PayPal Error Response:", e.response.text)
+        print("Request URL:", e.request.url)
+        print("Redirect Location:", e.response.headers.get("location"))
         raise HTTPException(
             status_code=502,
-            detail="PayPal could not create the order."
+            detail={
+                "message": "PayPal could not create the order.",
+                "paypal_status": e.response.status_code,
+                "paypal_error": e.response.text
+            }
         )
 
     except httpx.RequestError:
@@ -142,19 +154,26 @@ async def capture_order(order_id: str):
             detail="Could not connect to PayPal."
         )
 
+from fastapi.responses import RedirectResponse
+
 @app.get("/api/paypal/return")
-def paypal_return(token: str):
-    return {
-        "success": True,
-        "message": "Buyer returned from PayPal checkout.",
-        "order_id": token
-    }
+def paypal_return(token: str, group_id: int):
+    return RedirectResponse(
+        url=(
+            f"http://localhost:5173/group/{group_id}/scan"
+            f"?payment=returned&order_id={token}"
+        ),
+        status_code=303
+    )
 
 
 @app.get("/api/paypal/cancel")
-def paypal_cancel():
-    return {
-        "success": False,
-        "message": "Buyer cancelled PayPal checkout."
-    }
+def paypal_cancel(group_id: int):
+    return RedirectResponse(
+        url=(
+            f"http://localhost:5173/group/{group_id}/scan"
+            f"?payment=cancelled"
+        ),
+        status_code=303
+    )
 

@@ -1,86 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import api from "../lib/api";
 import { useParams, Link } from "react-router-dom";
-import {useNavigate} from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { AgGridReact } from "ag-grid-react";
+
 import {
-  ArrowLeft,
+  ModuleRegistry,
+  AllCommunityModule,
+  themeQuartz,
+} from "ag-grid-community";
+import {
   ArrowDownLeft,
   ArrowUpRight,
-  Receipt,
-  Pencil,
   Check,
-  X,
   Users,
   Plus,
+  Copy,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
-// Mock group data — we'll replace this with an API response later.
-const mockGroup = {
-  id: "1",
-  name: "Goa Trip",
-  emoji: "🌴",
-  members: [
-    { id: 1, name: "You", spent: 4500, color: "#FF684F" },
-    { id: 2, name: "Riya", spent: 3200, color: "#FFC83D" },
-    { id: 3, name: "Ananya", spent: 2100, color: "#A9C7FF" },
-    { id: 4, name: "Rahul", spent: 1800, color: "#B6E3B8" },
-    { id: 5, name: "Karan", spent: 1400, color: "#E7C7FF" },
-  ],
-  transactions: [
-    {
-      id: 1,
-      title: "Hotel booking",
-      amount: 4500,
-      payer: "You",
-      date: "Oct 26",
-      transcript:
-        "I paid four thousand five hundred rupees for the hotel booking for all five of us.",
-    },
-  {
-      id: 2,
-      title: "Dinner at the beach",
-      amount: 3200,
-      payer: "Riya",
-      date: "Oct 25",
-      transcript:
-        "Riya paid three thousand two hundred rupees for dinner at the beach. Split this equally between all five people.",
-    },
-  {
-      id: 3,
-      title: "Cab to the airport",
-      amount: 1800,
-      payer: "Rahul",
-      date: "Oct 25",
-      transcript:
-        "Rahul paid eighteen hundred for the cab to the airport.",
-    },
-  {
-      id: 4,
-      title: "Groceries",
-      amount: 2100,
-      payer: "Ananya",
-      date: "Oct 24",
-      transcript:
-        "Ananya bought groceries worth two thousand one hundred rupees for the group.",
-    },
-  {
-      id: 5,
-      title: "Snacks and drinks",
-      amount: 1400,
-      payer: "Karan",
-      date: "Oct 24",
-      transcript:
-        "Karan paid fourteen hundred for snacks and drinks.",
-    },
-  ],
-};
-
 const formatCurrency = (amount) =>
-  new Intl.NumberFormat("en-IN", {
+  new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(amount);
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(Number(amount) || 0));
 
 function ThreeDCard({ children, className = "" }) {
   return (
@@ -92,47 +37,261 @@ function ThreeDCard({ children, className = "" }) {
   );
 }
 
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+const payEaseTheme = themeQuartz.withParams({
+  backgroundColor: "#FFFFFF",
+  foregroundColor: "#182D43",
+  headerBackgroundColor: "#FFF0B8",
+  headerTextColor: "#182D43",
+  borderColor: "#E7DCC7",
+  accentColor: "#FF684F",
+  fontFamily: "inherit",
+});
+
+const columnDefs = [
+  {
+    field: "title",
+    headerName: "Description",
+    minWidth: 200,
+    flex: 2,
+    filter: "agTextColumnFilter",
+  },
+  {
+    field: "payer",
+    headerName: "Paid By",
+    minWidth: 140,
+    flex: 1,
+    filter: "agTextColumnFilter",
+  },
+  {
+    field: "amount",
+    headerName: "Amount",
+    minWidth: 130,
+    flex: 1,
+    filter: "agNumberColumnFilter",
+    valueFormatter: (params) => formatCurrency(params.value),
+  },
+  {
+    field: "date",
+    headerName: "Date",
+    minWidth: 150,
+    flex: 1,
+    filter: "agDateColumnFilter",
+    valueFormatter: (params) =>
+      params.value
+        ? params.value.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+        : "—",
+  },
+  {
+    field: "input_source",
+    headerName: "Source",
+    minWidth: 120,
+    flex: 1,
+    filter: "agTextColumnFilter",
+    valueFormatter: (params) =>
+      params.value
+        ? params.value.charAt(0).toUpperCase() + params.value.slice(1)
+        : "Manual",
+  },
+  {
+    field: "split_type",
+    headerName: "Split Type",
+    minWidth: 140,
+    flex: 1,
+    filter: "agTextColumnFilter",
+    valueFormatter: (params) =>
+      params.value
+        ? params.value.replaceAll("_", " ")
+        : "—",
+  },
+];
+
+const defaultColDef = {
+  sortable: true,
+  filter: true,
+  resizable: true,
+  floatingFilter: true,
+};
 export default function GroupDetails() {
   const { groupId } = useParams();
+  const [apiGroup, setApiGroup] = useState(null);
+  const [apiMembers, setApiMembers] = useState([]);
+  const [apiExpenses, setApiExpenses] = useState([]);
+  const [apiBalances, setApiBalances] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [apiLoading, setApiLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
+  const [quickFilterText, setQuickFilterText] = useState("");
+  const group = apiGroup;
+  const members = apiMembers;
 
-  // Mock group lookup. Later, fetch this group using groupId.
-  const group = mockGroup;
+  const transactions = apiExpenses.map((expense) => {
+    const payer = members.find(
+      (member) => member.id === expense.paid_by
+    );
 
-  const [transactions, setTransactions] = useState(group.transactions);
-  const [editingId, setEditingId] = useState(null);
-  const [draftTranscript, setDraftTranscript] = useState("");
+    return {
+      ...expense,
+      title: expense.description,
+      payer: payer?.name || "Unknown member",
+      date: expense.expense_date
+        ? new Date(expense.expense_date)
+        : null,
+      transcript: expense.transcription_text || "",
+    };
+  });
+  const currentUserBalance = apiBalances.find(
+    (balance) => balance.user_id === currentUser?.id
+  );
 
-  const totalSpent = group.members.reduce(
-    (total, member) => total + member.spent,
+  const totalSpent = transactions.reduce(
+    (total, expense) => total + Number(expense.amount),
     0
   );
 
-  // Demo balances for this group.
-  const youOwe = 1200;
-  const owedToYou = 2000;
-  const navigate = useNavigate();
+  const youOwe = Math.max(
+    -(Number(currentUserBalance?.net_balance ?? 0)),
+    0
+  );
 
-  function startEditing(transaction) {
-    setEditingId(transaction.id);
-    setDraftTranscript(transaction.transcript);
-  }
+  const owedToYou = Math.max(
+    Number(currentUserBalance?.net_balance ?? 0),
+    0
+  );
 
-  function saveTranscript(transactionId) {
-    setTransactions((current) =>
-      current.map((transaction) =>
-        transaction.id === transactionId
-          ? { ...transaction, transcript: draftTranscript }
-          : transaction
-      )
+  const memberColors = [
+    "#FF684F",
+    "#FFC83D",
+    "#A9C7FF",
+    "#B6E3B8",
+    "#E7C7FF",
+    "#F4B8C5",
+  ];
+
+  const memberSpending = members.map((member, index) => {
+    const balance = apiBalances.find(
+      (item) => item.user_id === member.id
     );
 
-    setEditingId(null);
-    setDraftTranscript("");
+    return {
+      ...member,
+      spent: Number(balance?.total_paid ?? 0),
+      color: memberColors[index % memberColors.length],
+    };
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchGroupData() {
+      try {
+        setApiLoading(true);
+        setApiError("");
+
+        const [
+          groupResponse,
+          membersResponse,
+          expensesResponse,
+          balancesResponse,
+          profileResponse,
+        ] = await Promise.all([
+          api.get(`/api/groups/${groupId}`),
+          api.get(`/api/groups/${groupId}/members`),
+          api.get(`/api/groups/${groupId}/expenses/`),
+          api.get(`/api/groups/${groupId}/balances`),
+          api.get("/api/auth/me"),
+        ]);
+
+        if (!active) return;
+
+        setApiGroup(groupResponse.data);
+        setApiMembers(membersResponse.data);
+        setApiExpenses(expensesResponse.data);
+        setApiBalances(balancesResponse.data);
+        setCurrentUser(profileResponse.data);
+
+      } catch (error) {
+        console.error("Failed to load group:", error);
+
+        if (!active) return;
+
+        setApiError(
+          error.response?.data?.detail ||
+          "Unable to load group details."
+        );
+
+      } finally {
+        if (active) setApiLoading(false);
+      }
+    }
+
+    fetchGroupData();
+
+    return () => {
+      active = false;
+    };
+  }, [groupId]);
+
+  useEffect(() => {
+    if (!apiLoading && apiGroup) {
+      console.log("Group:", apiGroup);
+      console.log("Members:", apiMembers);
+      console.log("Expenses:", apiExpenses);
+      console.log("Balances:", apiBalances);
+      console.log("Current user:", currentUser);
+    }
+  }, [
+    apiLoading,
+    apiGroup,
+    apiMembers,
+    apiExpenses,
+    apiBalances,
+    currentUser,
+  ]);
+
+  const navigate = useNavigate();
+
+  async function copyInviteCode() {
+    try {
+      await navigator.clipboard.writeText(group.invite_code);
+      setCopied(true);
+
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy invite code:", error);
+    }
   }
 
-  function cancelEditing() {
-    setEditingId(null);
-    setDraftTranscript("");
+  if (apiLoading) {
+    return (
+      <div className="min-h-screen bg-[#FFF4DE] flex items-center justify-center">
+        <p className="font-bold text-[#182D43]">
+          Loading group details...
+        </p>
+      </div>
+    );
+  }
+
+  if (apiError || !group) {
+    return (
+      <div className="min-h-screen bg-[#FFF4DE] flex flex-col items-center justify-center gap-4">
+        <p className="font-bold text-red-600">
+          {apiError || "Group not found."}
+        </p>
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="rounded-xl bg-[#182D43] px-5 py-3 font-bold text-white"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -145,7 +304,7 @@ export default function GroupDetails() {
         <section>
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-[#182D43] bg-[#FFE1D9] text-3xl shadow-[4px_4px_0px_#182D43]">
-              {group.emoji}
+              {group.emoji || "👥"}
             </div>
 
             <div>
@@ -154,14 +313,47 @@ export default function GroupDetails() {
               </h1>
               <p className="mt-1 flex items-center gap-2 text-sm text-[#526174]">
                 <Users size={16} />
-                {group.members.length} members · {transactions.length} transactions
+                {members.length} members · {transactions.length} transactions
               </p>
             </div>
           </div>
         </section>
 
+
+        {/* Invite Code Card */}
+        <ThreeDCard className="bg-[#182D43] p-5 text-[#FFF4DE] sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-black">
+                Invite friends to this group
+              </h2>
+              <p className="mt-1 text-sm text-[#D7DFE8]">
+                Share this code with friends so they can join.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-xl border-2 border-[#FFF4DE]/40 bg-white/10 px-5 py-3">
+                <span className="font-black tracking-[0.2em] text-xl">
+                  {group.invite_code}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={copyInviteCode}
+                className="flex items-center gap-2 rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-4 py-3 font-bold text-[#182D43] shadow-[3px_3px_0px_#FFF4DE] transition active:translate-y-1 active:shadow-none"
+              >
+                {copied ? <Check size={18} /> : <Copy size={18} />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+        </ThreeDCard>
+
+
         <div>
-          <button onClick={()=> navigate(`/group/${groupId}/settle`)} className="rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-3 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none">
+          <button onClick={() => navigate(`/group/${groupId}/settle`)} className="rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-3 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none">
             Settle Up
           </button>
         </div>
@@ -225,7 +417,7 @@ export default function GroupDetails() {
 
           <ThreeDCard className="bg-white p-5 sm:p-7">
             <div className="space-y-5">
-              {group.members.map((member) => {
+              {memberSpending.map((member) => {
                 const percentage =
                   totalSpent > 0 ? (member.spent / totalSpent) * 100 : 0;
 
@@ -257,6 +449,8 @@ export default function GroupDetails() {
           </ThreeDCard>
         </section>
 
+
+
         {/* Transactions */}
         <section>
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -265,12 +459,12 @@ export default function GroupDetails() {
                 Transactions
               </h2>
               <p className="mt-1 text-sm text-[#526174]">
-                Expense details and voice transcripts.
+                Search, sort and manage group expenses.
               </p>
             </div>
 
             <button
-              onClick={()=>navigate(`/group/${groupId}/scan`)}
+              onClick={() => navigate(`/group/${groupId}/scan`)}
               type="button"
               className="flex items-center gap-2 rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-4 py-3 font-bold shadow-[4px_4px_0px_#182D43] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[3px_3px_0px_#182D43] active:translate-x-1 active:translate-y-1 active:shadow-none"
             >
@@ -279,104 +473,41 @@ export default function GroupDetails() {
             </button>
           </div>
 
-          <div className="space-y-4">
-            {transactions.map((transaction) => {
-              const isEditing = editingId === transaction.id;
+          <ThreeDCard className="overflow-hidden bg-white p-4 sm:p-5">
+            {/* Search */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={quickFilterText}
+                onChange={(event) =>
+                  setQuickFilterText(event.target.value)
+                }
+                placeholder="Search transactions..."
+                className="w-full rounded-xl border-2 border-[#182D43]/20 bg-[#FFF9ED] px-4 py-3 text-sm outline-none transition focus:border-[#FF684F]"
+              />
+            </div>
 
-              return (
-                <ThreeDCard
-                  key={transaction.id}
-                  className="bg-white p-5 sm:p-6"
-                >
-                  {/* Transaction heading */}
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-[#182D43] bg-[#FFF0B8]">
-                        <Receipt size={22} />
-                      </div>
-
-                      <div>
-                        <h3 className="font-black">{transaction.title}</h3>
-                        <p className="mt-1 text-sm text-[#526174]">
-                          Paid by {transaction.payer} · {transaction.date}
-                        </p>
-                      </div>
-                    </div>
-
-                    <p className="text-xl font-black">
-                      {formatCurrency(transaction.amount)}
-                    </p>
-                  </div>
-
-                  {/* Transcript */}
-                  <div className="mt-5 rounded-xl border-2 border-dashed border-[#182D43]/30 bg-[#FFF9ED] p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold uppercase tracking-wider text-[#526174]">
-                        Audio transcript
-                      </p>
-
-                      {!isEditing && (
-                        <button
-                          type="button"
-                          onClick={() => startEditing(transaction)}
-                          className="flex items-center gap-1.5 rounded-lg border border-[#182D43] bg-white px-3 py-1.5 text-xs font-bold transition hover:bg-[#FFE1D9]"
-                        >
-                          <Pencil size={14} />
-                          Edit
-                        </button>
-                      )}
-                    </div>
-
-                    {isEditing ? (
-                      <div>
-                        <label
-                          className="sr-only"
-                          htmlFor={`transcript-${transaction.id}`}
-                        >
-                          Edit audio transcript
-                        </label>
-
-                        <textarea
-                          id={`transcript-${transaction.id}`}
-                          value={draftTranscript}
-                          onChange={(event) =>
-                            setDraftTranscript(event.target.value)
-                          }
-                          rows={4}
-                          className="w-full resize-y rounded-lg border-2 border-[#182D43] bg-white p-3 text-sm outline-none focus:border-[#FF684F] focus:ring-2 focus:ring-[#FF684F]/30"
-                        />
-
-                        <div className="mt-3 flex flex-wrap justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            className="flex items-center gap-1.5 rounded-lg border-2 border-[#182D43] bg-white px-3 py-2 text-sm font-bold"
-                          >
-                            <X size={15} />
-                            Cancel
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => saveTranscript(transaction.id)}
-                            className="flex items-center gap-1.5 rounded-lg border-2 border-[#182D43] bg-[#B6E3B8] px-3 py-2 text-sm font-bold shadow-[3px_3px_0px_#182D43] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
-                          >
-                            <Check size={15} />
-                            Save changes
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm leading-6 text-[#526174]">
-                        {transaction.transcript}
-                      </p>
-                    )}
-                  </div>
-                </ThreeDCard>
-              );
-            })}
-          </div>
+            {/* AG Grid */}
+            <div className="w-full">
+              <AgGridReact
+                theme={payEaseTheme}
+                rowData={transactions}
+                columnDefs={columnDefs}
+                defaultColDef={defaultColDef}
+                quickFilterText={quickFilterText}
+                pagination={true}
+                paginationPageSize={10}
+                paginationPageSizeSelector={[10, 20, 50]}
+                animateRows={true}
+                domLayout="autoHeight"
+                suppressCellFocus={true}
+                overlayNoRowsTemplate="No expenses recorded in this group yet."
+              />
+            </div>
+          </ThreeDCard>
         </section>
+
+
       </main>
     </div>
   );

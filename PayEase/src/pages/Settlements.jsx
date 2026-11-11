@@ -75,11 +75,12 @@ const recentSettlements = [
 ];
 
 const formatCurrency = (amount) =>
-  new Intl.NumberFormat("en-IN", {
+  new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "INR",
+    currency: "USD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Math.abs(Number(amount) || 0));
 
 export default function Settlement() {
   const navigate = useNavigate();

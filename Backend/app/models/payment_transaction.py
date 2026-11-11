@@ -18,6 +18,12 @@ class PaymentTransaction(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
+    group_id = Column(
+        Integer,
+        ForeignKey("groups.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+
     # Linked after the expense is created
     expense_id = Column(
         Integer,
@@ -94,6 +100,11 @@ class PaymentTransaction(Base):
 
     payer = relationship(
         "User",
+        back_populates="payment_transactions"
+    )
+
+    group = relationship(
+        "Group",
         back_populates="payment_transactions"
     )
 

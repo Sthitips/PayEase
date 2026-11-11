@@ -31,7 +31,7 @@ async def get_paypal_access_token():
         return token_data["access_token"]
 
 
-async def create_paypal_order():
+async def create_paypal_order(amount: str, group_id: int):
 
     # Create a PayPal order for a test purchase.
 
@@ -46,13 +46,19 @@ async def create_paypal_order():
                 "description": "PayEase test purchase",
                 "amount": {
                     "currency_code": "USD",
-                    "value": "10.00"
+                    "value": amount
                 }
             }
         ],
         "application_context": {
-            "return_url": "http://localhost:8000/api/paypal/return",
-            "cancel_url": "http://localhost:8000/api/paypal/cancel"
+            "return_url": (
+                f"http://localhost:8000/api/paypal/return"
+                f"?group_id={group_id}"
+            ),
+            "cancel_url": (
+                f"http://localhost:8000/api/paypal/cancel"
+                f"?group_id={group_id}"
+            )
         }
     }
 

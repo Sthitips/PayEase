@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, ScanLine, Users, Mic, MicOff, ChevronUp, ChevronDown } from "lucide-react";
 import Navbar from "../components/Navbar";
+import api from "../lib/api";
 
 const members = [
   { id: 1, name: "You" },
@@ -12,11 +13,12 @@ const members = [
 ];
 
 const formatCurrency = (amount) =>
-  new Intl.NumberFormat("en-IN", {
+  new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "INR",
+    currency: "USD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Math.abs(Number(amount) || 0));
 
 function parseQRData(qrText) {
   // Parse UPI QR codes like:
@@ -46,7 +48,8 @@ function parseQRData(qrText) {
 export default function QRScanner() {
   const navigate = useNavigate();
   const { groupId } = useParams();
-
+  const [searchParams] = useSearchParams();
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [qrData, setQrData] = useState(null);
   const [amount, setAmount] = useState("");
@@ -58,6 +61,52 @@ export default function QRScanner() {
   const [isTranscriptorOpen, setIsTranscriptorOpen] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const recognitionRef = useRef(null);
+  const [voiceError, setVoiceError] = useState("");
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+
+    // Only restore the form when returning from PayPal.
+    if (paymentStatus !== "returned" && paymentStatus !== "cancelled") {
+      return;
+    }
+
+    const storageKey = `payease_pending_payment_${groupId}`;
+    const savedData = sessionStorage.getItem(storageKey);
+
+    if (!savedData) {
+      setMessage("Your previous QR scan could not be restored. Please scan again.");
+      return;
+    }
+
+    try {
+      const data = JSON.parse(savedData);
+
+      setQrData(data.qrData);
+      setAmount(data.amount);
+      setMerchant(data.merchant);
+      setDescription(data.description);
+      setSelectedGroupId(data.selectedGroupId);
+      setSelectedMembers(data.selectedMembers || [1, 2, 3, 4]);
+      setScanned(true);
+
+      setMessage(
+        paymentStatus === "returned"
+          ? "You've returned from PayPal. Payment verification is pending."
+          : "PayPal checkout was cancelled. Your scanned QR details have been restored."
+      );
+    } catch (error) {
+      console.error("Failed to restore QR scan:", error);
+      setMessage("Unable to restore your previous QR scan. Please scan again.");
+    }
+  }, [groupId, searchParams]);
 
   function startScanner() {
     setScanned(false);
@@ -141,19 +190,121 @@ export default function QRScanner() {
     setMessage("Expense validated! Backend integration comes next.");
   }
 
-  function handleStartRecording() {
-    setIsRecording(true);
 
-    // TODO: Connect actual speech recognition here.
-    // Mock transcript for frontend testing.
-    setTranscript(
-      "I paid 1200 rupees for dinner. I had a pizza for 400, Riya had pasta for 350, and the rest was shared equally."
-    );
+  async function handlePayWithPayPal() {
+    if (!amount || Number(amount) <= 0) {
+      setMessage("Please enter a valid amount.");
+      return;
+    }
+
+    try {
+      setIsCreatingOrder(true);
+      setMessage("");
+
+      const activeGroupId = groupId || selectedGroupId;
+
+      if (!activeGroupId) {
+        setMessage("Please select a group before paying.");
+        return;
+      }
+
+      const response = await api.post("/api/paypal/create-order", {
+        amount: Number(amount),
+        group_id: Number(activeGroupId),
+      });
+
+      const { approval_url } = response.data;
+
+      if (!approval_url) {
+        throw new Error("PayPal approval URL was not returned.");
+      }
+
+      // Preserve the scanned QR and expense details before redirecting.
+      const storageKey = `payease_pending_payment_${activeGroupId}`;
+
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          qrData,
+          amount,
+          merchant,
+          description,
+          selectedGroupId: activeGroupId,
+          selectedMembers,
+        })
+      );
+
+      // Redirect the buyer to PayPal Sandbox.
+      window.location.href = approval_url;
+
+    } catch (error) {
+      console.error("PayPal order creation failed:", error);
+
+      setMessage(
+        error.response?.data?.detail ||
+        error.message ||
+        "Unable to initiate PayPal payment."
+      );
+
+      setIsCreatingOrder(false);
+    }
+  }
+
+  function handleStartRecording() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceError(
+        "Speech recognition is not supported in this browser. Please use Google Chrome."
+      );
+      return;
+    }
+
+    setVoiceError("");
+    setTranscript("");
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-IN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      setIsRecording(true);
+    };
+
+    recognition.onresult = (event) => {
+      let updatedTranscript = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        updatedTranscript += event.results[i][0].transcript + " ";
+      }
+
+      setTranscript(updatedTranscript.trim());
+    };
+
+    recognition.onerror = (event) => {
+      setVoiceError(
+        event.error === "not-allowed"
+          ? "Microphone permission was denied. Please allow microphone access."
+          : `Speech recognition error: ${event.error}`
+      );
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
   }
 
   function handleStopRecording() {
-    setIsRecording(false);
+    recognitionRef.current?.stop();
   }
+
 
   function handleUseTranscript() {
     setDescription(transcript);
@@ -166,7 +317,7 @@ export default function QRScanner() {
 
       <main className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
         <button
-          onClick={() => navigate(`/groups/${groupId}`)}
+          onClick={() => navigate(`/group/${groupId}`)}
           className="mb-6 flex items-center gap-2 font-bold hover:underline"
         >
           <ArrowLeft size={18} />
@@ -259,7 +410,7 @@ export default function QRScanner() {
                 htmlFor="amount"
                 className="mb-2 block text-sm font-bold"
               >
-                Total amount (₹)
+                Total amount ($)
               </label>
 
               <input
@@ -310,7 +461,16 @@ export default function QRScanner() {
                 className="w-full resize-none rounded-xl border-2 border-[#182D43] px-4 py-3 outline-none focus:border-[#FF684F]"
               />
             </div>
-
+            <button
+              type="button"
+              onClick={handlePayWithPayPal}
+              disabled={isCreatingOrder}
+              className="w-full rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCreatingOrder
+                ? "Connecting to PayPal..."
+                : "Pay with PayPal"}
+            </button>
             {/* Voice Transcriptor */}
             <div className="overflow-hidden rounded-2xl border-2 border-[#182D43]">
               {/* Panel Header */}
@@ -334,8 +494,8 @@ export default function QRScanner() {
               {/* Animated panel */}
               <div
                 className={`grid transition-all duration-500 ease-in-out ${isTranscriptorOpen
-                    ? "grid-rows-[1fr] opacity-100"
-                    : "grid-rows-[0fr] opacity-0"
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
                   }`}
               >
                 <div className="overflow-hidden">
@@ -355,8 +515,8 @@ export default function QRScanner() {
                             : handleStartRecording
                         }
                         className={`flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#182D43] transition-all ${isRecording
-                            ? "animate-pulse bg-[#FF684F]"
-                            : "bg-[#FFC83D] hover:scale-105"
+                          ? "animate-pulse bg-[#FF684F]"
+                          : "bg-[#FFC83D] hover:scale-105"
                           }`}
                       >
                         {isRecording ? (
@@ -388,6 +548,11 @@ export default function QRScanner() {
                         rows={4}
                         className="w-full resize-none rounded-xl border-2 border-[#182D43] bg-white px-4 py-3 text-sm outline-none focus:border-[#FF684F]"
                       />
+                      {voiceError && (
+                        <p className="rounded-lg bg-red-100 p-3 text-sm font-semibold text-red-700">
+                          {voiceError}
+                        </p>
+                      )}
                     </div>
 
                     {/* Use transcript */}

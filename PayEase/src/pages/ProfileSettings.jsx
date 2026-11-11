@@ -14,6 +14,7 @@ import {
   Camera,
   Check,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 import Navbar from "../components/Navbar";
 
@@ -30,7 +31,7 @@ export default function ProfileSettings() {
     group: false,
   });
 
-  const [currency, setCurrency] = useState("INR");
+  const [currency, setCurrency] = useState("USD");
 
   const toggleNotification = (key) => {
     setNotifications((prev) => ({
@@ -43,6 +44,8 @@ export default function ProfileSettings() {
     setEditing(false);
     alert("Profile updated!");
   };
+
+  const { logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#FFF4DE] text-[#182D43]">
@@ -235,16 +238,6 @@ export default function ProfileSettings() {
                     Currency used throughout PayEase
                   </p>
                 </div>
-
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="rounded-xl border-2 border-[#182D43] bg-[#FFF4DE] px-3 py-2 font-bold"
-                >
-                  <option value="INR">INR ₹</option>
-                  <option value="USD">USD $</option>
-                  <option value="EUR">EUR €</option>
-                </select>
               </div>
             </section>
 
@@ -280,12 +273,15 @@ export default function ProfileSettings() {
 
             {/* Logout */}
             <button
-              onClick={() => navigate("/login")}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition hover:bg-[#FF806B] active:translate-y-1 active:shadow-none"
-            >
-              <LogOut size={18} />
-              Log out
-            </button>
+  onClick={() => {
+    logout();
+    navigate("/", { replace: true });
+  }}
+  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition hover:bg-[#FF806B] active:translate-y-1 active:shadow-none"
+>
+  <LogOut size={18} />
+  Log out
+</button>
 
           </div>
         </div>

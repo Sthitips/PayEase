@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import api from "../lib/api";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import DashboardSideBar from "../components/DashboardSideBar";
+
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -18,42 +19,13 @@ import {
 } from "lucide-react";
 import QRScanner from "./QRScanner";
 
-const initialGroups = [
-  {
-    id: 1,
-    name: "Goa Trip",
-    emoji: "🌴",
-    members: 5,
-    expenses: 12,
-    balance: -1200,
-    color: "bg-[#FFE1D9]",
-  },
-  {
-    id: 2,
-    name: "Flatmates",
-    emoji: "🏠",
-    members: 4,
-    expenses: 8,
-    balance: 2000,
-    color: "bg-[#FFF0B8]",
-  },
-  {
-    id: 3,
-    name: "College Fest",
-    emoji: "🎉",
-    members: 6,
-    expenses: 15,
-    balance: -1250,
-    color: "bg-[#DDEBFF]",
-  },
-];
-
 const formatCurrency = (amount) =>
-  new Intl.NumberFormat("en-IN", {
+  new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(Number(amount) || 0));
 
 function ThreeDCard({ children, className = "", onClick, ...props }) {
   return (
@@ -67,14 +39,56 @@ function ThreeDCard({ children, className = "", onClick, ...props }) {
   );
 }
 
+const groupStyles = [
+  { emoji: "🌴", color: "bg-[#FFE1D9]" },
+  { emoji: "🏠", color: "bg-[#FFF0B8]" },
+  { emoji: "🎉", color: "bg-[#DDEBFF]" },
+  { emoji: "✈️", color: "bg-[#E5E1FF]" },
+  { emoji: "🍕", color: "bg-[#DDF3E4]" },
+];
+
+async function fetchGroupSummary(group, currentUserId) {
+  const [membersResponse, expensesResponse, balancesResponse] =
+    await Promise.all([
+      api.get(`/api/groups/${group.id}/members`),
+      api.get(`/api/groups/${group.id}/expenses/`),
+      api.get(`/api/groups/${group.id}/balances`),
+    ]);
+
+  const members = membersResponse.data;
+  const expenses = expensesResponse.data;
+  const balances = balancesResponse.data;
+
+  const currentUserBalance = balances.find(
+    (member) => member.user_id === currentUserId
+  );
+
+  const style = groupStyles[(group.id - 1) % groupStyles.length];
+
+  return {
+    ...group,
+    members: members.length,
+    expenses: expenses.length,
+    balance: Number(currentUserBalance?.net_balance ?? 0),
+    emoji: style.emoji,
+    color: style.color,
+  };
+}
+
+
 export default function Dashboard() {
-  const [groups, setGroups] = useState(initialGroups);
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [user, setUser] = useState(null);
   const [groupMode, setGroupMode] = useState("create");
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [message, setMessage] = useState("");
   const [isSideBarOpen, setIsSideBarOpen] = useState(false);
+  const [joiningGroup, setJoiningGroup] = useState(false);
   const navigate = useNavigate();
 
   // Positive balance = people owe you.
@@ -89,50 +103,156 @@ export default function Dashboard() {
     0
   );
 
-  function handleCreateGroup(event) {
+  async function handleCreateGroup(event) {
     event.preventDefault();
 
     if (!groupName.trim()) return;
 
-    const newGroup = {
-      id: Date.now(),
-      name: groupName.trim(),
-      emoji: "✨",
-      members: 1,
-      expenses: 0,
-      balance: 0,
-      color: "bg-[#E7E4FF]",
-    };
+    try {
+      setCreatingGroup(true);
+      setMessage("");
 
-    setGroups((current) => [newGroup, ...current]);
-    setGroupName("");
-    setShowGroupForm(false);
-    setMessage(`"${newGroup.name}" created! This is currently demo data.`);
+      const response = await api.post("/api/groups/", {
+        name: groupName.trim(),
+        description: null,
+        currency: "USD",
+      });
+
+      // Add the actual group returned by FastAPI.
+      const enrichedGroup = await fetchGroupSummary(
+        response.data,
+        user.id
+      );
+
+      setGroups((current) => [
+        enrichedGroup,
+        ...current,
+      ]);
+
+      setGroupName("");
+      setShowGroupForm(false);
+
+      setMessage(`"${response.data.name}" created successfully!`);
+    } catch (err) {
+      console.error("Group creation failed:", err);
+
+      setMessage(
+        err.response?.data?.detail ||
+        "Unable to create group. Please try again."
+      );
+    } finally {
+      setCreatingGroup(false);
+    }
   }
 
-  function handleJoinGroup(event) {
+
+  async function handleJoinGroup(event) {
     event.preventDefault();
 
-    if (!inviteCode.trim()) return;
+    const code = inviteCode.trim().toUpperCase();
 
-    // Demo only: joining requires backend invite-code validation.
-    setMessage(
-      "Invite-code joining isn't connected yet. We'll enable it with the backend."
-    );
-    setInviteCode("");
+    if (!code) return;
+
+    try {
+      setJoiningGroup(true);
+      setMessage("");
+
+      // 1. Send the invite code to the backend
+      const response = await api.post("/api/groups/join", {
+        invite_code: code,
+      });
+
+      // 2. Fetch the joined group's complete dashboard summary
+      const enrichedGroup = await fetchGroupSummary(
+        response.data,
+        user.id
+      );
+
+      // 3. Add the new group without creating duplicates
+      setGroups((current) => [
+        enrichedGroup,
+        ...current.filter((group) => group.id !== enrichedGroup.id),
+      ]);
+
+      // 4. Reset the form
+      setInviteCode("");
+
+      // 5. Show success
+      setMessage(
+        `Successfully joined "${response.data.name}"!`
+      );
+
+    } catch (err) {
+      console.error("Joining group failed:", err);
+
+      setMessage(
+        err.response?.data?.detail ||
+        "Unable to join group. Please try again."
+      );
+
+    } finally {
+      setJoiningGroup(false);
+    }
   }
+
+
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchDashboardData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [profileResponse, groupsResponse] = await Promise.all([
+          api.get("/api/auth/me"),
+          api.get("/api/groups/"),
+        ]);
+
+        const currentUser = profileResponse.data;
+        const rawGroups = groupsResponse.data;
+
+        const enrichedGroups = await Promise.all(
+          rawGroups.map((group) =>
+            fetchGroupSummary(group, currentUser.id)
+          )
+        );
+
+        if (!active) return;
+
+        setUser(currentUser);
+        setGroups(enrichedGroups);
+      } catch (err) {
+        console.error("Dashboard loading failed:", err);
+
+        if (!active) return;
+
+        setError(
+          err.response?.data?.detail ||
+          "Unable to load your dashboard."
+        );
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function openGroup(group) {
-    // Replace this with navigation when React Router is configured.
     navigate(`/group/${group.id}`);
   }
+
 
   return (
     <div className="min-h-screen bg-[#FFF4DE] text-[#182D43]">
       {/* Header */}
-      <Navbar user={{ name: "John Doe" }} setIsSideBarOpen={setIsSideBarOpen} IsSideBarOpen={isSideBarOpen} />
-
-      <DashboardSideBar isOpen={isSideBarOpen} setIsOpen={setIsSideBarOpen} />
+      <Navbar user={user} />
       <main className="mx-auto max-w-7xl space-y-9 px-5 py-8 sm:px-8 sm:py-10">
         {/* Welcome */}
         <section>
@@ -140,7 +260,7 @@ export default function Dashboard() {
             Your money, minus the awkwardness.
           </p>
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-            Hey there! <span aria-hidden="true">👋</span>
+            Hey there!
           </h1>
           <p className="mt-2 text-sm text-[#526174] sm:text-base">
             Here's where your group finances stand.
@@ -149,18 +269,18 @@ export default function Dashboard() {
 
         {/* QR Scanner */}
         <section className="flex items-center justify-center">
-          <button onClick={()=>navigate("/scan")} className="grid grid-cols-1 w-full bg-[#FFE1D9] rounded-2xl border-2 border-[#182D43] shadow-[5px_5px_0px_#182D43] transition-all duration-150 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-[7px_7px_0px_#182D43] active:translate-x-[4px] active:translate-y-[4px] active:shadow-[1px_1px_0px_#182D43]">
-          <div className="md:flex md:flex-row md:items-center md:justify-between">
-          <div className="p-5 sm:p-7">
-          <h2 className="text-center md:text-left text-2xl font-black sm:text-3xl">Scan QR Code</h2>
-          <p className="text-center md:text-left mt-1 text-sm text-[#526174]">
-            Scan a QR code to make a payment.
-          </p>
-          </div>
-          <div className="p-5 sm:p-7">
-          <ScanQrCodeIcon className="mx-auto h-20 w-20 mt-2" />
-          </div>
-          </div>
+          <button onClick={() => navigate("/scan")} className="grid grid-cols-1 w-full bg-[#FFE1D9] rounded-2xl border-2 border-[#182D43] shadow-[5px_5px_0px_#182D43] transition-all duration-150 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-[7px_7px_0px_#182D43] active:translate-x-[4px] active:translate-y-[4px] active:shadow-[1px_1px_0px_#182D43]">
+            <div className="md:flex md:flex-row md:items-center md:justify-between">
+              <div className="p-5 sm:p-7">
+                <h2 className="text-center md:text-left text-2xl font-black sm:text-3xl">Scan QR Code</h2>
+                <p className="text-center md:text-left mt-1 text-sm text-[#526174]">
+                  Scan a QR code to make a payment.
+                </p>
+              </div>
+              <div className="p-5 sm:p-7">
+                <ScanQrCodeIcon className="mx-auto h-20 w-20 mt-2" />
+              </div>
+            </div>
           </button>
         </section>
 
@@ -221,7 +341,21 @@ export default function Dashboard() {
           </div>
 
           {/* Group cards */}
-          {groups.length === 0 ? (
+          {loading ? (
+            <div className="rounded-2xl border-2 border-dashed border-[#182D43]/40 p-10 text-center">
+              <p className="font-semibold">Loading your groups...</p>
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-6 text-center">
+              <p className="font-semibold text-red-700">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-3 rounded-lg bg-[#182D43] px-4 py-2 text-sm font-bold text-white"
+              >
+                Retry
+              </button>
+            </div>
+          ) : groups.length === 0 ? (
             <div className="rounded-2xl border-2 border-dashed border-[#182D43]/40 p-10 text-center">
               <Users className="mx-auto mb-3" size={36} />
               <h3 className="text-lg font-bold">No groups yet</h3>
@@ -265,13 +399,12 @@ export default function Dashboard() {
                     Your balance
                   </p>
                   <p
-                    className={`mt-1 text-lg font-black ${
-                      group.balance > 0
-                        ? "text-[#24754C]"
-                        : group.balance < 0
-                          ? "text-[#C94B36]"
-                          : "text-[#526174]"
-                    }`}
+                    className={`mt-1 text-lg font-black ${group.balance > 0
+                      ? "text-[#24754C]"
+                      : group.balance < 0
+                        ? "text-[#C94B36]"
+                        : "text-[#526174]"
+                      }`}
                   >
                     {group.balance > 0
                       ? `You're owed ${formatCurrency(group.balance)}`
@@ -313,11 +446,10 @@ export default function Dashboard() {
                 setMessage("");
               }}
               aria-pressed={groupMode === "create"}
-              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-bold transition-all active:translate-y-1 ${
-                groupMode === "create"
-                  ? "border-2 border-[#182D43] bg-[#FF684F] text-[#182D43]"
-                  : "text-[#FFF4DE] hover:bg-white/10"
-              }`}
+              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-bold transition-all active:translate-y-1 ${groupMode === "create"
+                ? "border-2 border-[#182D43] bg-[#FF684F] text-[#182D43]"
+                : "text-[#FFF4DE] hover:bg-white/10"
+                }`}
             >
               <Plus size={19} />
               Create group
@@ -330,11 +462,10 @@ export default function Dashboard() {
                 setMessage("");
               }}
               aria-pressed={groupMode === "join"}
-              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-bold transition-all active:translate-y-1 ${
-                groupMode === "join"
-                  ? "border-2 border-[#182D43] bg-[#FFC83D] text-[#182D43]"
-                  : "text-[#FFF4DE] hover:bg-white/10"
-              }`}
+              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-bold transition-all active:translate-y-1 ${groupMode === "join"
+                ? "border-2 border-[#182D43] bg-[#FFC83D] text-[#182D43]"
+                : "text-[#FFF4DE] hover:bg-white/10"
+                }`}
             >
               <Users size={19} />
               Join group
@@ -376,22 +507,30 @@ export default function Dashboard() {
                 <label className="sr-only" htmlFor="inviteCode">
                   Group invite code
                 </label>
+
                 <input
                   id="inviteCode"
                   value={inviteCode}
-                  onChange={(event) => setInviteCode(event.target.value)}
-                  placeholder="Enter your invite code"
-                  maxLength={30}
+                  onChange={(event) =>
+                    setInviteCode(event.target.value.toUpperCase())
+                  }
+                  placeholder="Enter your 8-character invite code"
+                  maxLength={8}
+                  minLength={8}
                   required
-                  className="min-h-12 min-w-0 flex-1 rounded-xl border-2 border-[#FFF4DE] bg-white px-4 text-[#182D43] outline-none placeholder:text-[#7A8795] focus:border-[#FFC83D] focus:ring-2 focus:ring-[#FFC83D]/40"
+                  className="min-h-12 min-w-0 flex-1 rounded-xl border-2 border-[#FFF4DE] bg-white px-4 text-[#182D43] uppercase tracking-widest outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-[#7A8795] focus:border-[#FFC83D] focus:ring-2 focus:ring-[#FFC83D]/40"
                 />
+
+
                 <button
                   type="submit"
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-5 font-black text-[#182D43] shadow-[4px_4px_0px_#FFF4DE] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[3px_3px_0px_#FFF4DE] active:translate-x-1 active:translate-y-1 active:shadow-none"
+                  disabled={joiningGroup || inviteCode.trim().length !== 8}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-5 font-black text-[#182D43] shadow-[4px_4px_0px_#FFF4DE] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[3px_3px_0px_#FFF4DE] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Users size={19} />
-                  Join group
+                  {joiningGroup ? "Joining..." : "Join group"}
                 </button>
+
               </form>
             )}
 

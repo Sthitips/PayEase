@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   Menu,
   X,
@@ -11,30 +12,34 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-export default function DashboardSidebar({ isOpen, setIsOpen}) {
+export default function DashboardSidebar({ isOpen, setIsOpen }) {
   const [accountOpen, setAccountOpen] = useState(false);
-
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const location = useLocation();
 
   const closeSidebar = () => setIsOpen(false);
+  const handleLogout = () => {
+    closeSidebar();
+    logout();
+    navigate("/", { replace: true });
+  };
 
   return (
     <>
       {/* Dark overlay */}
       <div
         onClick={closeSidebar}
-        className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${
-          isOpen
-            ? "visible opacity-100"
-            : "invisible opacity-0"
-        }`}
+        className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${isOpen
+          ? "visible opacity-100"
+          : "invisible opacity-0"
+          }`}
       />
 
       {/* Sidebar drawer */}
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col bg-white shadow-xl transition-transform duration-300 ease-in-out ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col bg-white shadow-xl transition-transform duration-300 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b p-5">
@@ -90,9 +95,8 @@ export default function DashboardSidebar({ isOpen, setIsOpen}) {
 
             <ChevronDown
               size={18}
-              className={`transition-transform ${
-                accountOpen ? "rotate-180" : ""
-              }`}
+              className={`transition-transform ${accountOpen ? "rotate-180" : ""
+                }`}
             />
           </button>
 
@@ -111,10 +115,7 @@ export default function DashboardSidebar({ isOpen, setIsOpen}) {
         {/* Logout */}
         <div className="border-t p-4">
           <button
-            onClick={() => {
-              closeSidebar();
-              // Add your logout logic here
-            }}
+            onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-lg p-3 text-red-600 hover:bg-red-50"
           >
             <LogOut size={20} />
