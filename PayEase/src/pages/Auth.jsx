@@ -106,7 +106,7 @@ const Auth = () => {
 
               <div className="flex justify-center">
                   <img
-                    src="/images/travel-img.png"
+                    src="/travel-img.png"
                     alt="Friends enjoying a trip together"
                   />
               </div>
