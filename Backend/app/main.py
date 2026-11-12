@@ -18,7 +18,7 @@ from app.models.group_member import GroupMember
 from app.models.payment_transaction import PaymentTransaction
 from fastapi.responses import RedirectResponse
 from app.routes import settlements
-
+from app.core.config import settings
 app = FastAPI()
 app.include_router(auth_router)
 app.include_router(groups_router)
@@ -300,7 +300,7 @@ async def capture_order(
 def paypal_return(token: str, group_id: int):
     return RedirectResponse(
         url=(
-            f"http://localhost:5173/group/{group_id}/scan"
+            f"{settings.FRONTEND_URL}/group/{group_id}/scan"
             f"?payment=returned&order_id={token}"
         ),
         status_code=303
@@ -308,12 +308,11 @@ def paypal_return(token: str, group_id: int):
 
 
 
-
 @app.get("/api/paypal/cancel")
 def paypal_cancel(group_id: int):
     return RedirectResponse(
         url=(
-            f"http://localhost:5173/group/{group_id}/scan"
+            f"{settings.FRONTEND_URL}/group/{group_id}/scan"
             f"?payment=cancelled"
         ),
         status_code=303
