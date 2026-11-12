@@ -8,6 +8,7 @@ import AuthForm from "../components/AuthForm";
 import AuthToggle from "../components/AuthToggle";
 import api from "../lib/api";
 
+
 const Auth = () => {
   const [mode, setMode] = useState("login");
   const [error, setError] = useState("");
@@ -95,12 +96,22 @@ const Auth = () => {
         >
           <aside
             className="
-              hidden rounded-2xl border bg-[#182D43]
+              hidden rounded-2xl border bg-black
               p-6 text-[#FFF4DE] shadow-lg
               md:flex md:min-h-[320px] md:flex-col md:justify-between
             "
           >
-            {/* Keep your existing interactive panel content here */}
+            {/* Interactive travel visual */}
+            <div className="flex h-full flex-col justify-between gap-6">
+
+              <div className="flex justify-center">
+                  <img
+                    src="public\travel-img.png"
+                    alt="Friends enjoying a trip together"
+                  />
+              </div>
+
+            </div>
           </aside>
 
           <section

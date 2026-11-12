@@ -4,8 +4,10 @@ from app.core.config import settings
 async def get_paypal_access_token():
 
     # Authenticate with PayPal and obtain an OAuth access token.
-
-    url = f"{settings.PAYPAL_BASE_URL}/v1/oauth2/token"
+    print("Getting PayPal access token...")
+    # url = f"{settings.PAYPAL_BASE_URL}/v1/oauth2/token"
+    url = f"{settings.PAYPAL_BASE_URL.rstrip('/')}/v1/oauth2/token"
+    print("Requesting:", url)
 
     async with httpx.AsyncClient() as client:
         response = await client.post(

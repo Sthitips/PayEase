@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { LucideEyeClosed, LucideEye } from "lucide-react";
 
 export default function AuthForm({
   mode,
@@ -9,6 +10,8 @@ export default function AuthForm({
 }) {
   const isSignup = mode === "signup";
   const [validationError, setValidationError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -68,16 +71,27 @@ export default function AuthForm({
         <label htmlFor="password" className="text-sm font-medium">
           Password
         </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          placeholder="Enter your password"
-          autoComplete={isSignup ? "new-password" : "current-password"}
-          minLength={8}
-          required
-          className={inputClass}
-        />
+
+        <div className="relative">
+          <input
+            id="password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            placeholder="Enter your password"
+            autoComplete={isSignup ? "new-password" : "current-password"}
+            minLength={8}
+            required
+            className={`${inputClass} pr-16`}
+          />
+
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#182D43]/60 hover:text-[#FF684F]"
+          >
+            {showPassword ? <LucideEyeClosed /> : <LucideEye />}
+          </button>
+        </div>
       </div>
 
       {isSignup && (
@@ -85,29 +99,30 @@ export default function AuthForm({
           <label htmlFor="confirmPassword" className="text-sm font-medium">
             Confirm password
           </label>
-          <input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            placeholder="Confirm your password"
-            autoComplete="new-password"
-            minLength={8}
-            required
-            className={inputClass}
-          />
+
+          <div className="relative">
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Confirm your password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              className={`${inputClass} pr-16`}
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((prev) => !prev)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#182D43]/60 hover:text-[#FF684F]"
+            >
+              {showConfirmPassword ? <LucideEyeClosed /> : <LucideEye />}
+            </button>
+          </div>
         </div>
       )}
 
-      {!isSignup && (
-        <div className="text-right">
-          <a
-            href="/forgot-password"
-            className="text-sm font-semibold text-[#182D43] hover:text-[#FF684F] hover:underline"
-          >
-            Forgot password?
-          </a>
-        </div>
-      )}
 
       {(validationError || error) && (
         <p role="alert" className="text-sm font-medium text-red-600">
@@ -136,17 +151,6 @@ export default function AuthForm({
             ? "Create account →"
             : "Login to PayEase →"}
       </button>
-
-      <p className="text-center text-xs leading-5 text-muted-foreground">
-        By continuing, you agree to our{" "}
-        <a href="/terms" className="font-semibold text-[#182D43] underline">
-          Terms
-        </a>{" "}
-        and{" "}
-        <a href="/privacy" className="font-semibold text-[#182D43] underline">
-          Privacy Policy
-        </a>.
-      </p>
     </form>
   );
 }

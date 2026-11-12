@@ -9,14 +9,49 @@ import FAQ from "../components/shadcn-studio/blocks/faq-component-01/faq-compone
 
 const faqItems = [
   {
-    question: 'Do you charge for each upgrade?',
+    question: 'What is PayEase?',
     answer:
-      'Some upgrades are free, while others may have an additional cost, depending on the type of upgrade and your current plan. For specific pricing details, please check our pricing page or contact our support team.'
+      'PayEase is a smart group expense management platform that makes shared spending easier. Create groups, record expenses using QR scanning or voice input, let AI help calculate individual shares, and keep track of who owes whom.'
   },
   {
-    question: 'Do I need to purchase a license for each website?',
+    question: 'How do I create a group?',
     answer:
-      'Yes, you need to purchase a separate license for each website where you plan to use our components. Each license is tied to a single domain and its subdomains. This ensures proper licensing compliance and helps us maintain and improve our products for all users.'
+      'Sign in to PayEase, navigate to your dashboard, and select Create Group. Add a group name and invite members. You can also share the group invite code so others can join.'
+  },
+  {
+    question: 'How can I join an existing group?',
+    answer:
+      'Select Join Group from your dashboard and enter the invite code shared by an existing group member. Once you join, you can view group expenses, balances and settlements.'
+  },
+  {
+    question: 'How can I record a group expense?',
+    answer:
+      'You can scan a supported payment QR code, pay using PayPal and describe an expense using voice input. PayEase uses AI to extract relevant details, suggest participants and calculate individual shares before you confirm the expense.'
+  },
+  {
+    question: 'How does AI help manage expenses?',
+    answer:
+      'PayEase uses AI to understand expense descriptions, identify amounts, participants and relevant details, and generate suggested expense splits. You can review the generated draft and confirm it before anything is recorded.'
+  },
+  {
+    question: 'Can I split expenses unequally?',
+    answer:
+      'Yes. PayEase supports different split configurations, allowing expenses to be distributed according to individual shares rather than always dividing the amount equally.'
+  },
+  {
+    question: 'How does PayEase calculate who owes whom?',
+    answer:
+      'PayEase compares how much each member has paid against their individual share of group expenses. It then simplifies outstanding balances to suggest a settlement plan with fewer transactions.'
+  },
+  {
+    question: 'How do I confirm a settlement?',
+    answer:
+      'Once a payer marks a settlement as paid, the recipient receives a confirmation request. The recipient can confirm or reject the reported payment. A settlement is marked complete only after recipient confirmation.'
+  },
+  {
+    question: 'Can I view my group transaction history?',
+    answer:
+      'Yes. Each group has a transaction dashboard where members can review recorded expenses, see who paid, and track how much each member contributed.'
   }
 ];
 
@@ -53,11 +88,8 @@ export default function Home() {
             </p>
 
             <div id="get-started" className="mt-7 flex flex-wrap gap-4">
-              <Button onClick={() => console.log("Start a group")}>
-                Start a group
-              </Button>
               <a href="#how-it-works">
-                <Button variant="secondary">See how it works</Button>
+                <Button variant="secondary">Know More</Button>
               </a>
             </div>
 
@@ -121,10 +153,6 @@ export default function Home() {
         >
            <FAQ faqItems={faqItems} />
         </section>
-
-        <footer id="about" className="px-5 py-8 text-center text-sm text-[#425166]">
-          Made for the memories, not the money math
-        </footer>
       </main>
     </div>
   );

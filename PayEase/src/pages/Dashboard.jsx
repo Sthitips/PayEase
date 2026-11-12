@@ -553,10 +553,6 @@ export default function Dashboard() {
           </div>
         </section>
       </main>
-
-      <footer className="border-t-2 border-[#182D43]/15 px-5 py-6 text-center text-sm text-[#526174]">
-        Made for friends, not financial drama. ✨
-      </footer>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -51,21 +52,24 @@ def initiate_settlement_payment(
                 "A payment attempt is already awaiting confirmation"
             )
 
-        group = db.query(Group).filter(
-            Group.id == settlement.group_id
-        ).first()
+        group = (
+            db.query(Group)
+            .filter(Group.id == settlement.group_id)
+            .first()
+        )
 
         if not group:
             raise ValueError("Group not found")
 
+        # Create a manual payment report.
         payment = SettlementPayment(
             settlement_id=settlement.id,
             payer_user_id=payer_user_id,
             confirmed_by_user_id=None,
             amount=settlement.amount,
             currency=group.currency,
-            provider="paypal",
-            payment_method=payment_data.payment_method,
+            provider="manual",
+            payment_method="manual",
             external_reference=payment_data.external_reference,
             idempotency_key=str(uuid4()),
             status="pending_confirmation",
@@ -91,7 +95,7 @@ def confirm_settlement_payment(
     action: str
 ):
     try:
-        # Fetch the payment attempt.
+        # Fetch and lock the payment attempt.
         payment = (
             db.query(SettlementPayment)
             .filter(SettlementPayment.id == payment_id)
@@ -128,12 +132,11 @@ def confirm_settlement_payment(
 
         now = datetime.now(timezone.utc)
 
-        payment.confirmed_by_user_id = recipient_user_id
-        payment.confirmation_method = "manual"
-        payment.confirmed_at = now
-
         if action == "confirm":
             payment.status = "recipient_confirmed"
+            payment.confirmed_by_user_id = recipient_user_id
+            payment.confirmation_method = "manual"
+            payment.confirmed_at = now
 
             settlement.status = "completed"
             settlement.payment_method = payment.payment_method
@@ -143,6 +146,7 @@ def confirm_settlement_payment(
 
         elif action == "reject":
             payment.status = "rejected"
+            # Leave settlement pending so the payer can report payment again.
 
         else:
             raise ValueError("Invalid confirmation action")

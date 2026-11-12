@@ -65,51 +65,15 @@ export default function DashboardSidebar({ isOpen, setIsOpen }) {
             Dashboard
           </Link>
 
-          <Link
-            to="/groups"
-            onClick={closeSidebar}
-            className="flex items-center gap-3 rounded-lg p-3 hover:bg-orange-100"
-          >
-            <Users size={20} />
-            Groups
-          </Link>
-
-          <Link
-            to="/expenses"
-            onClick={closeSidebar}
-            className="flex items-center gap-3 rounded-lg p-3 hover:bg-orange-100"
-          >
-            <Receipt size={20} />
-            Expenses
-          </Link>
-
           {/* Account accordion */}
-          <button
-            onClick={() => setAccountOpen(!accountOpen)}
-            className="flex w-full items-center justify-between rounded-lg p-3 hover:bg-orange-100"
+          <Link
+            to="/profile"
+            onClick={closeSidebar}
+            className="flex items-center gap-3 rounded-lg p-3 hover:bg-orange-100"
           >
-            <span className="flex items-center gap-3">
-              <UserRound size={20} />
-              Account
-            </span>
-
-            <ChevronDown
-              size={18}
-              className={`transition-transform ${accountOpen ? "rotate-180" : ""
-                }`}
-            />
-          </button>
-
-          {accountOpen && (
-            <Link
-              to="/profile"
-              onClick={closeSidebar}
-              className="ml-8 flex items-center gap-3 rounded-lg p-3 hover:bg-orange-100"
-            >
-              <UserRound size={18} />
-              Profile & Settings
-            </Link>
-          )}
+            <UserRound size={18} />
+            Profile
+          </Link>
         </nav>
 
         {/* Logout */}

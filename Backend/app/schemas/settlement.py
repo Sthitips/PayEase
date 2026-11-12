@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 class SettlementPaymentInitiate(BaseModel):
-    payment_method: Literal["paypal"] = "paypal"
+    payment_method: Literal["manual"] = "manual"
     external_reference: str | None = Field(
         default=None,
         max_length=255

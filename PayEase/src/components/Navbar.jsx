@@ -61,21 +61,6 @@ export default function Navbar({ user: userProp }) {
           <span className="text-[#FF684F]">Ease</span>
         </div>
 
-        {/* Logged-out navigation links */}
-        {!isLoggedIn && (
-          <div className="hidden items-center gap-8 md:flex">
-            <a href="/#features" className="font-semibold hover:text-[#FF684F]">
-              Features
-            </a>
-            <a href="/#how-it-works" className="font-semibold hover:text-[#FF684F]">
-              How it works
-            </a>
-            <a href="/#about" className="font-semibold hover:text-[#FF684F]">
-              About
-            </a>
-          </div>
-        )}
-
         {/* Get Started / Profile */}
         <div onClick={handleGetStartedClick} className="hover:cursor-pointer">
           {!isLoggedIn ? (

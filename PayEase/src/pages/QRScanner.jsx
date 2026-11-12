@@ -49,6 +49,7 @@ export default function QRScanner() {
   const navigate = useNavigate();
   const { groupId } = useParams();
   const [searchParams] = useSearchParams();
+  const captureStartedRef = useRef(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [qrData, setQrData] = useState(null);
@@ -58,12 +59,20 @@ export default function QRScanner() {
   const [selectedMembers, setSelectedMembers] = useState([1, 2, 3, 4]);
   const [message, setMessage] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState(groupId || "");
+  const [groups, setGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(!groupId);
+  const [groupsError, setGroupsError] = useState("");
   const [isTranscriptorOpen, setIsTranscriptorOpen] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const recognitionRef = useRef(null);
   const [voiceError, setVoiceError] = useState("");
-
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [aiDraft, setAiDraft] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [isConfirmingExpense, setIsConfirmingExpense] = useState(false);
+  const activeGroupId = groupId || selectedGroupId;
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
@@ -78,8 +87,9 @@ export default function QRScanner() {
       return;
     }
 
-    const storageKey = `payease_pending_payment_${groupId}`;
-    const savedData = sessionStorage.getItem(storageKey);
+    const savedData = sessionStorage.getItem(
+      "payease_pending_payment"
+    );
 
     if (!savedData) {
       setMessage("Your previous QR scan could not be restored. Please scan again.");
@@ -93,7 +103,9 @@ export default function QRScanner() {
       setAmount(data.amount);
       setMerchant(data.merchant);
       setDescription(data.description);
-      setSelectedGroupId(data.selectedGroupId);
+      setSelectedGroupId(
+        String(data.selectedGroupId || groupId || "")
+      );
       setSelectedMembers(data.selectedMembers || [1, 2, 3, 4]);
       setScanned(true);
 
@@ -107,6 +119,108 @@ export default function QRScanner() {
       setMessage("Unable to restore your previous QR scan. Please scan again.");
     }
   }, [groupId, searchParams]);
+
+
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const orderId = searchParams.get("order_id");
+
+    if (paymentStatus !== "returned" || !orderId) {
+      return;
+    }
+
+    // Prevent duplicate capture requests.
+    if (captureStartedRef.current) {
+      return;
+    }
+
+    captureStartedRef.current = true;
+
+    async function capturePayment() {
+      try {
+        setMessage("Verifying and capturing your PayPal payment...");
+
+        const response = await api.post(
+          `/api/paypal/capture-order/${encodeURIComponent(orderId)}`
+        );
+
+        if (
+          response.data.success &&
+          response.data.order_status === "COMPLETED"
+        ) {
+          setIsPaymentCompleted(true);
+
+          setMessage("Payment successful! Your transaction has been verified.");
+
+          // Remove pending payment data after successful capture.
+          sessionStorage.removeItem("payease_pending_payment");
+        } else {
+          setMessage(
+            response.data.message ||
+            "Payment could not be confirmed. Please try again."
+          );
+          captureStartedRef.current = false;
+        }
+
+      } catch (error) {
+        console.error("PayPal capture failed:", error);
+
+        setMessage(
+          error.response?.data?.detail ||
+          "Unable to verify your payment. Please try again."
+        );
+
+        captureStartedRef.current = false;
+      }
+    }
+
+    capturePayment();
+
+  }, [groupId, searchParams]);
+
+  useEffect(() => {
+    // If scanner is opened from a group page, use that group directly.
+    if (groupId) {
+      setSelectedGroupId(String(groupId));
+      setLoadingGroups(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    async function fetchGroups() {
+      try {
+        setLoadingGroups(true);
+        setGroupsError("");
+
+        const response = await api.get("/api/groups/");
+
+        if (isMounted) {
+          setGroups(response.data || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch groups:", error);
+
+        if (isMounted) {
+          setGroupsError(
+            error.response?.data?.detail ||
+            "Unable to load your groups. Please try again."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingGroups(false);
+        }
+      }
+    }
+
+    fetchGroups();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [groupId]);
+
 
   function startScanner() {
     setScanned(false);
@@ -141,56 +255,6 @@ export default function QRScanner() {
       }
     );
   }
-
-  function toggleMember(memberId) {
-    setSelectedMembers((current) =>
-      current.includes(memberId)
-        ? current.filter((id) => id !== memberId)
-        : [...current, memberId]
-    );
-  }
-
-  const splitAmount =
-    selectedMembers.length > 0 && Number(amount) > 0
-      ? Number(amount) / selectedMembers.length
-      : 0;
-
-  function handleRecordExpense(event) {
-    event.preventDefault();
-
-    if (!amount || Number(amount) <= 0) {
-      setMessage("Please enter a valid amount.");
-      return;
-    }
-
-    if (selectedMembers.length === 0) {
-      setMessage("Select at least one member to split this expense.");
-      return;
-    }
-
-    if (!description.trim()) {
-      setMessage("Please describe what this expense was for.");
-      return;
-    }
-
-    // Demo only: this does not save to the backend yet.
-    const expense = {
-      groupId,
-      amount: Number(amount),
-      merchant,
-      description,
-      paidBy: "You",
-      splitAmong: selectedMembers,
-      qrData,
-      createdAt: new Date().toISOString(),
-    };
-
-    console.log("Expense to record:", expense);
-
-    setMessage("Expense validated! Backend integration comes next.");
-  }
-
-
   async function handlePayWithPayPal() {
     if (!amount || Number(amount) <= 0) {
       setMessage("Please enter a valid amount.");
@@ -220,7 +284,7 @@ export default function QRScanner() {
       }
 
       // Preserve the scanned QR and expense details before redirecting.
-      const storageKey = `payease_pending_payment_${activeGroupId}`;
+      const storageKey = `payease_pending_payment`;
 
       sessionStorage.setItem(
         storageKey,
@@ -305,10 +369,122 @@ export default function QRScanner() {
     recognitionRef.current?.stop();
   }
 
+  async function handleGenerateAIDraft() {
+    const userInput = transcript.trim();
 
-  function handleUseTranscript() {
-    setDescription(transcript);
-    setIsTranscriptorOpen(false);
+    if (userInput.length < 5) {
+      setMessage("Please provide a more detailed expense description.");
+      return;
+    }
+
+    const activeGroupId = groupId || selectedGroupId;
+
+    if (!activeGroupId) {
+      setMessage("Please select a group first.");
+      return;
+    }
+
+    try {
+      setIsGeneratingDraft(true);
+      setMessage("");
+      setAiDraft(null);
+
+      const response = await api.post(
+        `/api/groups/${activeGroupId}/expenses/ai-draft`,
+        {
+          description: userInput,
+        }
+      );
+
+      const draft = response.data;
+
+      if (draft.clarification_needed) {
+        setMessage(
+          draft.clarification_question ||
+          "The AI needs more information. Please clarify your expense."
+        );
+        return;
+      }
+
+      const membersResponse = await api.get(
+        `/api/groups/${activeGroupId}/members`
+      );
+
+      setGroupMembers(membersResponse.data);
+      setAiDraft(draft);
+
+      // Temporary verification until we build the preview UI.
+      console.log("AI Expense Draft:", draft);
+
+      setMessage("AI expense draft generated successfully!");
+    } catch (error) {
+      console.error("AI draft generation failed:", error);
+
+      setMessage(
+        error.response?.data?.detail ||
+        "Unable to generate an AI expense draft. Please try again."
+      );
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  }
+
+  async function handleConfirmExpense() {
+    if (!aiDraft) return;
+
+    const activeGroupId = groupId || selectedGroupId;
+
+    const totalInCents = Math.round(Number(aiDraft.amount) * 100);
+
+    const allocatedInCents = aiDraft.splits.reduce(
+      (total, split) =>
+        total + Math.round(Number(split.share_amount) * 100),
+      0
+    );
+
+    if (totalInCents !== allocatedInCents) {
+      setMessage("The allocation does not match the total expense.");
+      return;
+    }
+
+    try {
+      setIsConfirmingExpense(true);
+      setMessage("");
+
+      const payload = {
+        amount: aiDraft.amount,
+        description: aiDraft.description,
+        merchant: aiDraft.merchant || null,
+        input_source: "ai",
+        split_type: aiDraft.split_type,
+        transcription_text: transcript,
+        participants: aiDraft.participants,
+        splits: aiDraft.splits.map((split) => ({
+          user_id: split.user_id,
+          share_amount: split.share_amount,
+        })),
+      };
+
+      await api.post(
+        `/api/groups/${activeGroupId}/expenses/ai-confirm`,
+        payload
+      );
+
+      // Clear the draft and return to the group page.
+      setAiDraft(null);
+      setTranscript("");
+
+      navigate(`/group/${activeGroupId}`);
+    } catch (error) {
+      console.error("Expense confirmation failed:", error);
+
+      setMessage(
+        error.response?.data?.detail ||
+        "Unable to save the expense. Please try again."
+      );
+    } finally {
+      setIsConfirmingExpense(false);
+    }
   }
 
   return (
@@ -316,13 +492,6 @@ export default function QRScanner() {
       <Navbar />
 
       <main className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
-        <button
-          onClick={() => navigate(`/group/${groupId}`)}
-          className="mb-6 flex items-center gap-2 font-bold hover:underline"
-        >
-          <ArrowLeft size={18} />
-          Back to group
-        </button>
 
         <section className="mb-7">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#667386]">
@@ -372,8 +541,7 @@ export default function QRScanner() {
 
         {/* Expense form */}
         {scanned && (
-          <form
-            onSubmit={handleRecordExpense}
+          <form onSubmit={(event) => event.preventDefault()}
             className="space-y-5 rounded-2xl border-2 border-[#182D43] bg-white p-5 shadow-[5px_5px_0px_#182D43] sm:p-7"
           >
 
@@ -385,15 +553,33 @@ export default function QRScanner() {
 
                 <select
                   value={selectedGroupId}
-                  onChange={(event) => setSelectedGroupId(event.target.value)}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  disabled={loadingGroups}
                   required
                   className="w-full rounded-xl border-2 border-[#182D43] bg-white px-4 py-3"
                 >
-                  <option value="">Choose a group</option>
-                  <option value="1">Goa Trip</option>
-                  <option value="2">Flatmates</option>
-                  <option value="3">College Fest</option>
+                  <option value="">
+                    {loadingGroups ? "Loading groups..." : "Select a group"}
+                  </option>
+
+                  {groups.map((group) => (
+                    <option key={group.id} value={String(group.id)}>
+                      {group.name}
+                    </option>
+                  ))}
                 </select>
+
+                {groupsError && (
+                  <p className="mt-2 text-sm text-red-600">
+                    {groupsError}
+                  </p>
+                )}
+
+                {!loadingGroups && !groupsError && groups.length === 0 && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    You haven't joined any groups yet.
+                  </p>
+                )}
               </div>
             )}
             <div className="flex items-center justify-between">
@@ -461,16 +647,23 @@ export default function QRScanner() {
                 className="w-full resize-none rounded-xl border-2 border-[#182D43] px-4 py-3 outline-none focus:border-[#FF684F]"
               />
             </div>
-            <button
-              type="button"
-              onClick={handlePayWithPayPal}
-              disabled={isCreatingOrder}
-              className="w-full rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isCreatingOrder
-                ? "Connecting to PayPal..."
-                : "Pay with PayPal"}
-            </button>
+
+            {isPaymentCompleted ? (
+              <div className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-[#182D43] bg-[#DDF5E5] px-5 py-4 font-black text-[#24754C] shadow-[4px_4px_0px_#182D43]">
+                <Check size={22} />
+                Payment Done
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePayWithPayPal}
+                disabled={isCreatingOrder}
+                className="w-full rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCreatingOrder ? "Connecting to PayPal..." : "Pay with PayPal"}
+              </button>
+            )}
+
             {/* Voice Transcriptor */}
             <div className="overflow-hidden rounded-2xl border-2 border-[#182D43]">
               {/* Panel Header */}
@@ -490,6 +683,7 @@ export default function QRScanner() {
                   <ChevronUp size={20} />
                 )}
               </button>
+
 
               {/* Animated panel */}
               <div
@@ -558,59 +752,138 @@ export default function QRScanner() {
                     {/* Use transcript */}
                     <button
                       type="button"
-                      onClick={handleUseTranscript}
-                      disabled={!transcript.trim()}
-                      className="w-full rounded-xl border-2 border-[#182D43] bg-[#FFC83D] px-5 py-3 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={handleGenerateAIDraft}
+                      disabled={!transcript.trim() || isGeneratingDraft}
+                      className="w-full rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-3 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Use transcript
+                      {isGeneratingDraft
+                        ? "Analyzing Expense..."
+                        : "Generate AI Expense Draft"}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Split members */}
-            <div>
-              <div className="mb-3 flex items-center gap-2">
-                <Users size={18} />
-                <h3 className="font-black">Split with</h3>
+            {/* AI Expense Preview */}
+            {aiDraft && (
+              <div className="space-y-5 rounded-2xl border-2 border-[#182D43] bg-[#FFF4DE] p-5 shadow-[5px_5px_0px_#182D43]">
+
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-black">
+                    AI Expense Breakdown
+                  </h2>
+                  <span className="rounded-full bg-[#DDF5E5] px-3 py-1 text-xs font-bold text-[#24754C]">
+                    Draft Ready
+                  </span>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-[#526174]">
+                    Total expense
+                  </p>
+                  <p className="text-3xl font-black">
+                    {formatCurrency(aiDraft.amount)}
+                  </p>
+                  <p className="mt-1 text-sm text-[#526174]">
+                    {aiDraft.description}
+                    {aiDraft.merchant ? ` · ${aiDraft.merchant}` : ""}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border-2 border-[#182D43] bg-white p-4">
+                  <p className="mb-3 font-black">Who owes what?</p>
+
+                  <div className="space-y-3">
+                    {aiDraft.splits.map((split) => {
+                      const member = groupMembers.find(
+                        (item) => Number(item.id) === Number(split.user_id)
+                      );
+
+                      return (
+                        <div
+                          key={split.user_id}
+                          className="flex items-center justify-between"
+                        >
+                          <span className="font-semibold">
+                            {member?.name || `Member ${split.user_id}`}
+                            {Number(split.user_id) === Number(aiDraft.payer_user_id)
+                              ? " (Paid)"
+                              : ""}
+                          </span>
+
+                          <span className="font-black">
+                            {formatCurrency(split.share_amount)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 flex justify-between border-t-2 border-dashed border-[#182D43] pt-3">
+                    <span className="font-black">Total allocated</span>
+                    <span className="font-black">
+                      {formatCurrency(
+                        aiDraft.splits.reduce(
+                          (sum, split) => sum + Number(split.share_amount),
+                          0
+                        )
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border-2 border-[#182D43] bg-white p-4">
+                  <p className="text-sm text-[#526174]">Split method</p>
+                  <p className="font-black capitalize">
+                    {aiDraft.split_type.replaceAll("_", " ")}
+                  </p>
+
+                  {aiDraft.adjustment && (
+                    <p className="mt-2 text-sm text-[#526174]">
+                      Special adjustment applied for{" "}
+                      {aiDraft.adjustment.participant_name}.
+                    </p>
+                  )}
+                </div>
+
+                {aiDraft.items?.length > 0 && (
+                  <div className="rounded-xl border-2 border-[#182D43] bg-white p-4">
+                    <p className="mb-3 font-black">Itemized breakdown</p>
+
+                    {aiDraft.items.map((item, index) => (
+                      <div key={index} className="flex justify-between py-2">
+                        <span>{item.description}</span>
+                        <span className="font-bold">
+                          {formatCurrency(item.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleConfirmExpense}
+                  disabled={isConfirmingExpense}
+                  className="w-full rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none disabled:opacity-50"
+                >
+                  {isConfirmingExpense
+                    ? "Saving Expense..."
+                    : "Confirm Expense"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAiDraft(null)}
+                  disabled={isConfirmingExpense}
+                  className="w-full rounded-xl border-2 border-[#182D43] bg-white px-5 py-3 font-bold"
+                >
+                  Discard Draft
+                </button>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-3">
-                {members.map((member) => {
-                  const isSelected = selectedMembers.includes(member.id);
-
-                  return (
-                    <button
-                      key={member.id}
-                      type="button"
-                      onClick={() => toggleMember(member.id)}
-                      className={`rounded-xl border-2 border-[#182D43] px-3 py-3 text-left font-bold transition ${isSelected
-                        ? "bg-[#FFC83D] shadow-[3px_3px_0px_#182D43]"
-                        : "bg-white opacity-60"
-                        }`}
-                    >
-                      <span className="flex items-center justify-between">
-                        {member.name}
-                        {isSelected && <Check size={16} />}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Split summary */}
-            <div className="rounded-xl border-2 border-[#182D43] bg-[#FFF4DE] p-4">
-              <p className="text-sm font-semibold text-[#526174]">
-                Equal split · {selectedMembers.length} members
-              </p>
-
-              <p className="mt-1 text-2xl font-black">
-                {formatCurrency(splitAmount)}
-                <span className="ml-2 text-sm font-semibold">per person</span>
-              </p>
-            </div>
 
             {message && (
               <p
@@ -621,12 +894,6 @@ export default function QRScanner() {
               </p>
             )}
 
-            <button
-              type="submit"
-              className="w-full rounded-xl border-2 border-[#182D43] bg-[#FF684F] px-5 py-4 font-black shadow-[4px_4px_0px_#182D43] transition active:translate-y-1 active:shadow-none"
-            >
-              Record expense
-            </button>
 
             <button
               type="button"

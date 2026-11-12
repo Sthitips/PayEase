@@ -90,3 +90,26 @@ def confirm_payment(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/my-reports",
+    response_model=list[SettlementPaymentResponse]
+)
+def get_my_payment_reports(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return (
+        db.query(SettlementPayment)
+        .filter(
+            SettlementPayment.payer_user_id == current_user.id,
+            SettlementPayment.status.in_([
+                "pending_confirmation",
+                "recipient_confirmed",
+                "rejected"
+            ])
+        )
+        .order_by(SettlementPayment.created_at.desc())
+        .all()
+    )
