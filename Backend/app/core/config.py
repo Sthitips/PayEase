@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     FRONTEND_URL: str
+    BACKEND_URL: str
 
     # AI Settings
     GEMINI_API_KEY: str

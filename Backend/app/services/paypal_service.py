@@ -54,11 +54,11 @@ async def create_paypal_order(amount: str, group_id: int):
         ],
         "application_context": {
             "return_url": (
-                f"http://localhost:8000/api/paypal/return"
+                f"http://{settings.BACKEND_URL}/api/paypal/return"
                 f"?group_id={group_id}"
             ),
             "cancel_url": (
-                f"http://localhost:8000/api/paypal/cancel"
+                f"http://{settings.BACKEND_URL}/api/paypal/cancel"
                 f"?group_id={group_id}"
             )
         }
